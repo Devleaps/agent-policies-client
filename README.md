@@ -1,10 +1,16 @@
-# AI Agent Policies
+# Agent Policies Client
 
 [![PyPI](https://img.shields.io/pypi/v/devleaps-agent-policies.svg)](https://pypi.org/project/devleaps-agent-policies/)
+[![Homebrew](https://img.shields.io/badge/homebrew-devleaps%2Fbrew%2Fagent--policies-green.svg)](https://github.com/Devleaps/homebrew-brew)
+
+
 
 Policies turn your [Cursor Rules](https://cursor.com/docs/context/rules) or [CLAUDE.md](https://docs.claude.com/en/docs/claude-code/memory) into hard guardrails which an AI Agent cannot simply ignore, or forget. They handle what to do when an agent wants to make a decision, along with other [hooks-supported events](https://github.com/Devleaps/agent-policies/blob/main/devleaps/policies/server/common/models.py). Policies can yield both decisions and guidance.
 
 This framework supports **Claude Code**. Support for **Cursor** is in beta.
+
+> [!NOTE]  
+> This repository is client-only. For a server reference implementation check out the open source [agent-policies-server](https://github.com/Devleaps/agent-policies-server).
 
 ## Why Policies
 
@@ -12,17 +18,22 @@ This framework supports **Claude Code**. Support for **Cursor** is in beta.
 
 Rule files can be forgotten or ignored completely by LLMs. Policies are unavoidable:
 
-```python
-command = input_data.command.strip()
+```rego
+decisions[decision] if {
+	input.parsed.executable == "terraform"
+	input.parsed.subcommand == "plan"
+	decision := {"action": "allow"}
+}
 
-if command == "terraform apply":
-    yield PolicyDecision(
-        action=PolicyAction.DENY,
-        reason="terraform apply is not allowed. Use `terraform plan` instead."
-    )
+decisions[decision] if {
+	input.parsed.executable == "terraform"
+	input.parsed.subcommand == "apply"
+	decision := {
+		"action": "deny",
+		"reason": "`terraform apply` is not allowed. Use `terraform plan` instead",
+	}
+}
 
-if command == "terraform plan":
-    yield PolicyDecision(action=PolicyAction.ALLOW)
 ```
 
 In the image below, the agent is denied by policy from running `terraform apply`. The agent can then make decisions on what to do next, in this case it outputs that it will attempt a `terraform plan` as per the policy recommendation.
@@ -33,13 +44,11 @@ In the image below, the agent is denied by policy from running `terraform apply`
 
 Aside from denying and allowing automatically, policies can also provide guidance through Post-* events:
 
-```python
-if comment_to_code_overlap >= 0.4:
-    yield PolicyHelper.guidance(
-        "Ensure comments add value beyond describing what's obvious from the code. "
-        "This comment may be redundant with the code it describes."
-    )
-    return
+```rego
+guidance_activations[check] if {
+	endswith(input.file_path, ".py")
+	check := "comment_ratio"
+}
 ```
 
 In the image below, an agent makes a change which includes a comment that is detected as being potentially redundant. The guidance from the snippet is given as feedback to the change, after which the agent by itself decides to remove the redundant comment.
@@ -48,8 +57,6 @@ In the image below, an agent makes a change which includes a comment that is det
 This library provides the **client component** for policy enforcement. It forwards hook events from your editor to a policy server.
 
 **To implement your own policy server:** Build a server that accepts events and returns policy decisions. This package provides the client, event types, and decision models. Server implementation (FastAPI app, policies, command parsing) is separate.
-
-**Note:** As of v2.0, this package is client-only. For production policy servers, contact [DevLeaps](https://devleaps.nl).
 
 ## Architecture
 
@@ -77,7 +84,11 @@ graph TB
 
 ### Installation
 
-Install from PyPI:
+Install either via Homebrew or PyPI:
+
+```bash
+brew install devleaps/brew/agent-policies
+```
 
 ```bash
 pip install devleaps-agent-policies
